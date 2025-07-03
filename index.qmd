@@ -1,0 +1,43 @@
+---
+title: "Las Anageles Education"
+author: "Inam Khan"
+---
+
+
+```{r}
+# 1. Load & set up -------------------------------------------
+library(tidycensus)
+library(dplyr)
+
+# Put your Census API key here once per R session
+# census_api_key("YOUR_KEY_HERE", install = TRUE)
+
+# 2. Choose the variables ------------------------------------
+vars <- c(
+  bach  = "B15003_022",   # Count: Bachelor's degree
+  total = "B15003_001"    # Count: Total pop. 25 years +  (denominator)
+)
+
+# 3. Download the data ---------------------------------------
+la_bach <- get_acs(
+  geography = "tract",
+  state     = "CA",
+  county    = "Los Angeles",
+  variables = vars,
+  year      = 2023,       # latest released 5‑year file (change if you need)
+  survey    = "acs5",
+  output    = "wide",     # puts *_E (estimate) columns side‑by‑side
+  geometry  = FALSE       # set TRUE if you want spatial shapes for mapping
+)
+
+# 4. Calculate percentage ------------------------------------
+la_bach <- la_bach %>% 
+  mutate(
+    pct_bach = 100 * bachE / totalE
+  ) %>% 
+  select(GEOID, NAME, pct_bach)
+
+# 5. Inspect -------------------------------------------------
+head(la_bach)
+
+```
