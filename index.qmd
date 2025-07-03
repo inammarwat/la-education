@@ -1,43 +1,106 @@
 ---
-title: "Las Anageles Education"
+title: "Los Angeles Education"
 author: "Inam Khan"
+execute: 
+  echo: false
 ---
 
+```{r}
+#| message: false
+
+library(tidycensus)
+library(tidyverse)
+library(leaflet)
+library(sf)
+library(viridis)
+```
 
 ```{r}
-# 1. Load & set up -------------------------------------------
-library(tidycensus)
-library(dplyr)
+#| warning: false
 
-# Put your Census API key here once per R session
-# census_api_key("YOUR_KEY_HERE", install = TRUE)
-
-# 2. Choose the variables ------------------------------------
-vars <- c(
-  bach  = "B15003_022",   # Count: Bachelor's degree
-  total = "B15003_001"    # Count: Total pop. 25 years +  (denominator)
-)
-
-# 3. Download the data ---------------------------------------
-la_bach <- get_acs(
+x <- get_acs(
   geography = "tract",
-  state     = "CA",
-  county    = "Los Angeles",
-  variables = vars,
-  year      = 2023,       # latest released 5‑year file (change if you need)
-  survey    = "acs5",
-  output    = "wide",     # puts *_E (estimate) columns side‑by‑side
-  geometry  = FALSE       # set TRUE if you want spatial shapes for mapping
+  variables = c(total = "B15003_001", 
+                bachelor = "B15003_022", 
+                masters = "B15003_023",
+                professional = "B15003_024", 
+                doctorate = "B15003_025"),
+  county = "Los Angeles",
+  state = "CA",
+  year = 2022,
+  geometry = TRUE,
+  progress_bar = FALSE, 
+  output = "wide"
+) |> 
+  mutate(pct_bachelors_or_higher = 100 * (
+    bachelorE + mastersE + professionalE + doctorateE) / totalE)
+
+write_rds(x, "la.rds")
+```
+
+```{r}
+#| warning: false
+
+# Create color palette based on bachelors percentage
+pal <- colorNumeric(
+  palette = "viridis",
+  domain = x$pct_bachelors_or_higher,
+  na.color = "#808080"
 )
 
-# 4. Calculate percentage ------------------------------------
-la_bach <- la_bach %>% 
-  mutate(
-    pct_bach = 100 * bachE / totalE
-  ) %>% 
-  select(GEOID, NAME, pct_bach)
+# Create labels for popups
+labels <- sprintf(
+  "<strong>Tract %s</strong><br/>
+  Total population 25+: %s<br/>
+  Bachelor's degrees: %s (%.1f%%)<br/>
+  Master's degrees: %s (%.1f%%)<br/>
+  Professional degrees: %s (%.1f%%)<br/>
+  Doctorate degrees: %s (%.1f%%)<br/>
+  <strong>Bachelor's or higher: %.1f%%</strong>",
+  substr(x$GEOID, 6, 11),  # Just show the tract number
+  format(x$totalE, big.mark = ","),
+  format(x$bachelorE, big.mark = ","), round(100 * x$bachelorE/x$totalE, 1),
+  format(x$mastersE, big.mark = ","), round(100 * x$mastersE/x$totalE, 1),
+  format(x$professionalE, big.mark = ","), round(100 * x$professionalE/x$totalE, 1),
+  format(x$doctorateE, big.mark = ","), round(100 * x$doctorateE/x$totalE, 1),
+  x$pct_bachelors_or_higher
+) %>% lapply(htmltools::HTML)
 
-# 5. Inspect -------------------------------------------------
-head(la_bach)
-
+# Create the map
+leaflet(x) %>%
+  addProviderTiles(providers$CartoDB.Positron) %>%
+  addPolygons(
+    fillColor = ~pal(pct_bachelors_or_higher),
+    weight = 0.5,
+    opacity = 1,
+    color = "white",
+    dashArray = "3",
+    fillOpacity = 0.7,
+    highlight = highlightOptions(
+      weight = 2,
+      color = "#666",
+      dashArray = "",
+      fillOpacity = 0.9,
+      bringToFront = TRUE
+    ),
+    label = labels,
+    labelOptions = labelOptions(
+      style = list("font-weight" = "normal", padding = "3px 8px"),
+      textsize = "15px",
+      direction = "auto"
+    )
+  ) %>%
+  addLegend(
+    pal = pal,
+    values = ~pct_bachelors_or_higher,
+    opacity = 0.7,
+    title = "% with Bachelor's<br/>or Higher",
+    position = "bottomright",
+    labFormat = labelFormat(suffix = "%")
+  ) %>%
+  setView(lng = -118.2437, lat = 34.0522, zoom = 9) %>%
+  addControl(
+    "<strong>Educational Attainment in Los Angeles</strong><br/>Percentage of population 25+ with bachelor's degree or higher by census tract",
+    position = "topright"
+  )
 ```
